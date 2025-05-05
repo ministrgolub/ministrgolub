@@ -11,7 +11,7 @@
 const config = {
     info: {
         name: "MyOwnPlugin",
-        authors: [{name: "ministrgolub"}],
+        authors: [{ name: "ministrgolub" }],
         version: "0.2",
         description: "Автоматически меняет кастомный статус",
         github: "https://github.com/ministrgolub/ministrgolub",
@@ -38,7 +38,8 @@ module.exports = !global.ZeresPluginLibrary ? class {
     start() {}
     stop() {}
 } : (([Plugin, Api]) => {
-    const { WebpackModules, Toasts } = Api;
+    const { Toasts } = Api;
+
     return class MyOwnPlugin extends Plugin {
         start() {
             this.statuses = [
@@ -54,33 +55,41 @@ module.exports = !global.ZeresPluginLibrary ? class {
             ];
             this.index = 0;
 
-            this.customStatusModule = WebpackModules.getByProps("updateCustomStatus");
+            // Попробуем найти модуль кастомного статуса другим способом
+            try {
+                const CustomStatusModule = BdApi.Webpack.getModule(m => m && m.updateCustomStatus);
+                if (!CustomStatusModule) {
+                    Toasts.show("❌ Модуль кастомного статуса не найден", { type: "error" });
+                    return;
+                }
 
-            if (!this.customStatusModule) {
-                Toasts.show("❌ Модуль кастомного статуса не найден", {type: "error"});
-                return;
-            }
+                this.setStatus = () => {
+                    const status = this.statuses[this.index];
+                    this.index = (this.index + 1) % this.statuses.length;
 
-            this.setStatus();
-            this.interval = setInterval(() => this.setStatus(), 10000);
-        }
+                    CustomStatusModule.updateCustomStatus({
+                        text: status,
+                        expires_at: null
+                    });
+                };
 
-        setStatus() {
-            const status = this.statuses[this.index];
-            this.index = (this.index + 1) % this.statuses.length;
-
-            if (this.customStatusModule?.updateCustomStatus) {
-                this.customStatusModule.updateCustomStatus({
-                    text: status,
-                    expires_at: null
-                });
+                this.setStatus();
+                this.interval = setInterval(() => this.setStatus(), 10000);
+            } catch (error) {
+                Toasts.show("❌ Ошибка при загрузке модуля кастомного статуса", { type: "error" });
+                console.error("Ошибка:", error);
             }
         }
 
         stop() {
             clearInterval(this.interval);
-            if (this.customStatusModule?.updateCustomStatus) {
-                this.customStatusModule.updateCustomStatus(null);
+            try {
+                const CustomStatusModule = BdApi.Webpack.getModule(m => m && m.updateCustomStatus);
+                if (CustomStatusModule) {
+                    CustomStatusModule.updateCustomStatus(null);
+                }
+            } catch (error) {
+                console.error("Ошибка при остановке плагина:", error);
             }
         }
     };
